@@ -1,0 +1,810 @@
+---
+title: "Final project"
+date: "07/05/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+##Introduction 
+
+A stroke is a serious life-threatening medical condition that happens when the blood supply to parts of the brain is cut off.
+Various symptoms such as the face dropping on one side, a person not being able to lift both arms and slurred speech can indicate that someone has experienced a stroke. 
+Worldwide, cerebrovascular accidents (stroke) is the second leading cause of death. 
+There are various factors which could impact the occurrence of such stroke such as a consumers diet, level of exercise and alchohol consumption.
+
+The source of that data set can be obtained via https://www.kaggle.com/fedesoriano/stroke-prediction-dataset. 
+The data set includes 5110 observations and 12 attributes. 
+11 predictor variables (UNIQUE I.D, GENDER, AGE, HYPERTENSION, HEART DISEASE, EVER MARRIED, WORK TYPE, RESIDENCE TYPE, AVERAGE GLUCOSE LEVEL, BMI, SMOKING STATUS) and the outcome variable STROKE is provided. 
+This investigation aims to apply machine learning methods to the data set and predict the likelihood of a stroke given a person’s characteristics. 
+Subsequently, a range of models have been constructed.
+Examples include:
+  
+  
+•	linear models
+•	logistic models
+•	model implementing gradient descent
+•	model with trees and a random forest
+•	model using neutral network
+•	model using deep learning techniques 
+
+
+The feasibility and implications of these models are discussed before a discussion of possibilities for further work concludes the report.
+
+Load the necessary libraries in order to run the functions.
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidymodels)
+library(pROC)
+library(tidyverse)
+library(broom)
+library(yardstick)
+library(dplyr)
+library(rminer)
+library(pROC)
+library(tinytex)
+library(tidymodels)
+library(rpart)
+library(rpart.plot)
+library(baguette)
+library(randomForest)
+library(cvms)
+library(fastDummies)
+library(dplyr)
+
+```
+
+First we load the data set. Ignoring the dummy variable 'id', we have in total 5110 observations with 10 variables along with the binary outcome variable 'stroke'. The fact that we have much more observations than predictors allow the possibility for further high-dimensional modeling.
+```{r}
+stroke_data <- healthcare_dataset_stroke_data
+dim(stroke_data)
+```
+
+We have one sample with the response 'other' for the variable 'gender'. While keeping it will make turning it to a binary factor impossible hence complicates data processing, removing one sample out of 5110 observations will only cause minimal impact. Therefore, the observation is dropped.
+```{r}
+stroke_data %>% count(gender)
+stroke_data <- stroke_data[!(stroke_data$gender=='Other'),];
+stroke_data %>% count(gender);
+stroke_data1 <- stroke_data;
+```
+
+We make sure that all the categorical variables are of type factor and we remove the dummy variable 'id' which is not useful for modeling.
+```{r}
+stroke_data1$gender <- factor(stroke_data1$gender);
+stroke_data1$hypertension <- factor(stroke_data1$hypertension);
+stroke_data1$heart_disease <- factor(stroke_data1$heart_disease);
+stroke_data1$ever_married <- factor(stroke_data1$ever_married);
+stroke_data1$work_type <- factor(stroke_data1$work_type);
+stroke_data1$Residence_type <- factor(stroke_data1$Residence_type);
+stroke_data1$smoking_status <- factor(stroke_data1$smoking_status);
+stroke_data1$stroke <- factor(stroke_data1$stroke);
+stroke_data1$id <- NULL;
+glimpse(stroke_data1)
+```
+
+Similarly, missing values in the variable 'bmi' are found, but number of observations where BMI is unknown is a relatively small proportion of the total number of observations and imputing such variable might introduce more bias, so we decide to remove these observations.
+```{r}
+stroke_data1 %>% count(bmi=='N/A') # show numbers of missing values of bmi
+stroke_data2<- stroke_data1[!(stroke_data1$bmi=='N/A'),]# removes observations with N/A as the value for BMI
+stroke_data2$bmi = as.numeric(as.character(stroke_data2$bmi));
+```
+
+We also observed missing values in the variable 'smoking_status'. However, given the fact the this is a categorical variable and classification models have the capability to treat 'Unknown' as a seperate response with no issue, these responses are therefore kept as 'Unknown'.
+```{r}
+stroke_data %>% count(smoking_status)
+```
+
+#Balance Data
+You can see that the data is imbalanced
+```{r}
+table(stroke_data2$stroke)
+```
+
+We now split the dataset into training and test data.
+```{r}
+set.seed(1)
+stroke_data_split <- initial_split(stroke_data2, strata = stroke) # 'strata=stroke' makes sure that the proportion of stroke victims is the same in both the test data and the training data
+
+stroke_data_train <- training(stroke_data_split) 
+stroke_data_test <- testing(stroke_data_split) 
+# *****explain test and training data difference******
+
+stroke_data_cv <- vfold_cv(stroke_data_train, v = 10, strata = stroke) #Forming 10 fold cross validation subsets of training data. 
+#*****explain purpose of cross validation******
+```
+
+
+#Save training data and test data as CSV files for easier access
+#drop this part in final write-up
+```{r} 
+write.csv(stroke_data_train, file='Stroke training data')
+write.csv(stroke_data_test, file='Stroke test data')
+```
+
+
+
+##Using linear regression to model stroke data
+##We are predicting the likelyhood,theta, of a person getting a stoke based on certain characteristics:
+$$\theta_i=Y= \beta_0 + \beta_1 X_1$$
+  
+
+```{r}
+## We first try out a simple linear model to predict the likelyhood of a person with certain characteristics having a stroke.
+linear_model <- lm(stroke~age, data = stroke_data_train)
+linear_model
+## computes the simple linear model using stroke and age on the trainig dataset
+summary(linear_model) 
+## computes a summary of the model, includes multiple r squared and significance levels.
+## The R-squared of the linear model, which can be thought of as “the percentage of variability in the response that is explained by the predictor” - r^2=0.05 which is very low and hence not a strong association between the response and predictor variable.
+## Relationship is negative, b0 and b1 have different coeffecient signs indicating as one increases, the other decreases.
+ggplot(stroke_data_train, aes(x=age, y=stroke)) + 
+  geom_point() 
+## Plots the simple linear regression.From the visualisation we can see that simple linear regression is not  a good model.
+```
+
+
+```{r}
+linear_model1 <- lm(stroke~avg_glucose_level, data = stroke_data_train)
+linear_model1
+## computes the simple linear model using stroke and age on the trainig dataset
+summary(linear_model1) 
+## computes a summary of the model, includes multiple r squared and significance levels.
+## The R-squared of the linear model is very low.
+## Relationship is negative, b0 and b1 have different coeffecient signs indicating as one increases, the other decreases.
+ggplot(stroke_data_train, aes(x=avg_glucose_level, y=stroke)) + 
+  geom_point() 
+## Plots the simple lineare regression.From the visualisation we can see that simple linear regression is not  a good model.
+```
+
+
+
+```{r}
+##Linear regression on age and stroke
+test_prob = predict(linear_model, newdata = stroke_data_test) 
+## testing the area under the curve to obtain the aaccuracy of the model
+test_roc = roc(stroke_data_test$stroke ~ test_prob, plot = TRUE, print.auc = TRUE)
+```
+
+```{r}
+##Linear regression on average level of glucose and stroke
+test_prob = predict(linear_model1, newdata = stroke_data_test)
+## testing the area under the curve to obtain the aaccuracy of the model
+test_roc = roc(stroke_data_test$avg_glucose_level ~ test_prob, plot = TRUE, print.auc = TRUE)
+```
+
+## Using logistic regression to model stroke data
+
+The logistic regression model is a better model than the linear regression model when it comes to classification, where the output is binary. Linear regression is not a good model because it could predict negative values for y, stroke, which is not possible in real life. 
+We are predicting the probability, theta, that a people gets stroke, given some characteristic x:
+$$\theta_i=p(x)=P(Y=1∣X=x)$$
+The logistic model is as follows: 
+$$log\frac{p(x)}{(1−p(x))}=X\beta$$
+Which gives:
+$$\theta=\frac{1}{(1+e^{-{\beta_0+\beta_1x_1+\beta_2x_2+...+\beta_px_p}})}$$
+
+#Making sure that the data is of the right type
+```{r}
+stroke_data_train<- dummy_cols(stroke_data_train, select_columns=c("stroke"), remove_first_dummy=TRUE,remove_selected_columns = TRUE) #we can't fit a logistic function if the outcome variable is not numeric. I have turned the stroke column into a dummy variable and removed the first column so that multi-collinearity will not be a problem (since the two dummy columns stroke and no-stroke would be perfectly correlated!)
+
+```
+```{r}
+stroke_data_train<- rename(stroke_data_train, c("stroke"="stroke_1")) #this renames stroke_1 into stroke, it  makes the dataset easier to understand for someone who hasn't seen the dataset before.
+class(stroke_data_train$stroke) #this checks that the 'stroke' variable is now the right type of data
+
+
+```
+
+#Logistic regression function
+
+
+```{r}
+#Writing a function that allows you to type in the predictor and outcome and fits a logistic model based on the variables selected
+logistic_regression_model <-function(predictor, outcome)    {
+  #function allows user to input the predictor and outcome variables
+  outcome <- as.numeric(outcome)
+  logit <- glm(outcome ~ as.numeric(predictor) , data = stroke_data_train, family = "binomial")
+  # predicts the logit model using the glm function, where the family is set to binomial
+  print(summary(logit)) #Prints a summary of the model, including the estimates for theta and the significance levels
+plot(outcome ~ as.numeric(predictor), data = stroke_data_train, xlab= predictor,
+     col = "darkorange", pch = "|", ylim = c(-0.2, 1),
+     main= "Logistic regression"  )
+#plots the logit regression so we can interpret it
+abline(h = 0, lty = 3)
+abline(h = 1, lty = 3)
+abline(h = 0.5, lty = 2)
+curve(predict(logit, data.frame(predictor = x), type = "response"), 
+     add = TRUE, lwd = 3, col = "dodgerblue")
+abline(v = -coef(logit)[1] / coef(logit)[2], lwd = 2)
+#a sigmoid curve is fit to the logit model
+}
+```
+
+
+
+#Logit on age and stroke
+```{r}
+logistic_regression_model(stroke_data_train$age,stroke_data_train$stroke)
+logit <- glm(stroke ~ age , data = stroke_data_train, family = "binomial")
+test_prob = predict(logit, stroke_data_test, type = "response") #Here we are predicting the test data using the model created using training data
+test_roc = roc(stroke_data_test$stroke ~ test_prob, plot = TRUE, print.auc = TRUE)
+# testing the area under the curve to obtain the accuracy of the model
+```
+
+
+From the coefficient table, we see that age is a good predictor of probability of stroke. Since the coefficient on age is positive, an increase in age increases the probability of stroke. The t value shows that the coefficient is statistically significant under almost 100% significance level.
+
+As can be seen from the ROC curve, this model has an AUC of 0.838. This means that the logit model using age to predict stroke has a good measure of separability. The model is able to distinguish between who is likely to suffer stroke and who is not, based on the age variable. 
+#Logit on bmi and stroke
+```{r}
+logistic_regression_model(stroke_data_train$bmi,stroke_data_train$stroke)
+
+```
+The output from this shows that that BMI is a significant predictor of the probability of stroke. Since the coefficient on BMI is positive, an increase in BMI increases the probability of stroke. The t values show that the coefficient on BMI is statistically significant.
+
+#Logit on average glucose level and stroke
+```{r}
+logistic_regression_model(stroke_data_train$avg_glucose_level,stroke_data_train$stroke)
+```
+The output from this shows that that average glucose level is a significant predictor of the probability of stroke.Since the coefficient on average glucose level is positive, an increase in average glucose level increases the probability of stroke. The t value for both the intercept estimate and the predictor estimate are significant. 
+
+#Logit on hypertension and stroke
+```{r}
+logistic_regression_model(stroke_data_train$hypertension,stroke_data_train$stroke)
+```
+The output from this shows that that hypertension is a significant predictor of the probability of stroke. The intercept estimate tells us that someone who does not have hypertension is much less likely to get stroke. The probability of stroke increases if one has hypertension. 
+
+#Multi-variate logit model
+For ease of interpretation, I used bi-variate logit regression so we can see how each of the variables out of BMI, hypertension and age can be used to predict stroke independently.
+Now, we are going to look at a logit model fit on all four variables
+```{r}
+multi_logit <- glm(stroke_1 ~ age + hypertension + bmi +avg_glucose_level, data = stroke_data_train, family = "binomial")
+  # predicts the logit model using the glm function, where the family is set to binomial
+  print(summary(multi_logit))
+test_prob = predict(multi_logit, stroke_data_test, type = "response") 
+test_roc = roc(stroke_data_test$stroke ~ test_prob, plot = TRUE, print.auc = TRUE)
+  
+```
+From the intercepts, we see that the coefficients on age, hypertension and average glucose level have significant t values. Therefore having a higher value for age, hypertension and average glucose level will increase the probability of a having stroke. 
+
+We can see that the AUC is better here (0.853>0.836) than simply using the 'age' variable as a predictor. This means that the model is more accurate using all four variables. 
+
+Overall, since most of the sample do not have stroke, it is different to make predictions about the probability of stroke as the variance is very high. However, if we manipulate the data and use a smaller subset where a higher proportion have had a stroke before, then we could be potentially overfitting the data on people who have had stroke before.
+
+The pro of a logistic model is that it has a simple probabilistic interpretion. It is easy to implement, efficient to train and interpretable even for a novice. But it tends to underperform when there are non-linear decision boundaries
+
+
+##Implementing a gradient descent on simple linear regression
+What is gradient descent?
+Gradient descent is an iterative optimisation algorithm for finding a local minimum of a function.The algorithm moves in the direction of the steepest descent, which is the negative of the gradient, for some number of steps, until some convergence criteria is satisfied.
+
+Code is inspired by https://www.r-bloggers.com/2017/02/implementing-the-gradient-descent-algorithm-in-r/ and code from seminar 5. We took care to understand and explain every single step in the code.
+
+Gradient descent will be implemented on linear regression:
+
+$$(1)\\y_i=\beta_0+\beta_1x_i+\epsilon $$
+The loss function is:
+$$(2)\\L(\beta)=\| \mathbf y - \mathbf X \beta \|^2$$
+The MSE is:
+$$(3)\\MSE = (1/n)\sum_{i=1}^n (y_i - \mathbf x_i^T \beta)^2 $$
+The gradient of the loss function at a given point is:
+$$(4)\\-2X'(y-X\hat{\beta})$$
+$$(5)\\\hat{\beta}=(X'X)^{-1}X'y$$
+
+#Gradient descent function
+I will be generating a random point then computing the gradient of the loss function at this point, then updating the estimate for beta and then compute the gradient again, until some convergence criteria is satisfied. 
+```{r}
+gradientDesc <- function(x, y, learn_rate, convergence_threshold, n, max_iter) {
+  plot(x, y, col='red',pch='|', main='Gradient descent on linear regression')
+  beta0<-runif(1,-10,10) #generating a random number between -10 and 10 as the starting point for beta
+  c<-runif(1,-10,10) #enerating a random number between -10 and 10 as the starting point for the intercept
+  yhat<-x*beta0+c # the formula for yhat as given by equation (1) above
+  MSE <- sum((y-yhat)^2)/n # the formila for the mean square error as given by equation (3)
+  converged = F # whether the model has converged is set to FALSE
+  iterations = 0 # no. of iterations is 0
+  while(converged == F) {
+    # Implement the gradient descent algorithm
+    beta_new <- beta0 - learn_rate * ((1 / n) * (sum((yhat - y) * x)))# updating the beta estimate by the learning rate, which is the magnitude of the steps the algorithm takes along the slope of the loss function
+    c_new <- c - learn_rate * ((1 / n) * (sum(yhat - y))) # updating the incept in the same way 
+    beta0 <- beta_new # replacing the old beta estimate with the new one
+    c <- c_new
+    yhat <- beta0 * x + c #updating the new yhat using the new beta estimate
+    MSE_new <- sum((y - yhat) ^ 2) / n #calculating the new loss function
+  if(MSE - MSE_new <= convergence_threshold) {
+    # if the difference between the new and old loss function is equal to some convergence threshold, then the function has converged, and the optimal intercept and slope are returned 
+    segments(x0 = 0, y0 = c, x1 = (1-c)/beta0, y1 = 1, col = "darkgreen", lwd=2) 
+      converged = T
+      return(paste("Optimal intercept:", c, "Optimal slope:", beta0))
+      
+    }
+    iterations = iterations + 1 
+    if(iterations > max_iter) { #if the number of interations has reached the maximum iterations set at the start of function, then the algorithm stops running and outputs the beta and c. 
+      segments(x0 = 0, y0 = c, x1 = (1-c)/beta0, y1 = 1, col = "darkgreen", lwd=2)  #the line estimated by the algorithm is plotted
+      converged = T
+      return(paste("Optimal intercept:", c, "Optimal slope:", beta0)) # the optimal intercept and slope are ouputted
+    }
+  }
+
+}
+```
+
+```{r}
+##Gradient Descent for age as the predictor variable
+gradientDesc(stroke_data_train$age,stroke_data_train$stroke, n=3682, learn_rate = 0.0001,convergence_threshold = 0.000001, max_iter = 90000)
+
+```
+
+```{r}
+##Gradient Descent for BMI as the predictor variable
+gradientDesc(stroke_data_train$bmi,stroke_data_train$stroke, n=3682, learn_rate = 0.001,convergence_threshold = 0.0001, max_iter = 900)
+
+```
+
+```{r}
+##Gradient Descent with average glucose level as the predictor variable
+gradientDesc(stroke_data_train$avg_glucose_level,stroke_data_train$stroke, n=3682, learn_rate = 0.0001,convergence_threshold = 0.000001, max_iter = 90000)
+
+```
+From running these gradient descent models, we find that, despite the relationship between all of the predictor variables and the outcome variable being positive (ie higher age-> higher chance of stroke), sometimes the gradient descent function breaks down and predicts a negative slope. 
+This could be due to the fact that the step size was too large, and the algorithm 'overshot' going down the steepest descent. This is one of the key drawbacks of gradient descent- it can veer off in the wrong direction and give a completely wrong estimate!
+
+Also, it is clear that a logistic probablity function is a much better model for this dataset as linear regression predicts negative intercept, which is not sensible. 
+
+## Trees & Random Forest
+
+By referring to the ideas in lecture on 'trees', we think that tree methods might be suitable for this sample. First, we have much more observations than predicting variables here, so this high complexity nature justifies the implementation of trees. Also we observe earlier the limited performance of linear models on this dataset and their incapabilities of handling missing values in a categorical variable, tree methods can be helpful in solving these obstacles.
+
+First, we train a single classification tree using the 'rpart' library. Here we fix tree_depth, which is the maximum level of the tree as 5 in order to obtain a relatively simple and interpretable model.'Cost_complexity' is the tuning parameter indicating how much we should prune the tree to make it simpler.
+```{r}
+stroke_tree <- decision_tree(tree_depth = 5,
+                             cost_complexity = tune("C")) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+# constructing the workflow
+stroke_workflow_tree <- workflow() %>%
+  add_recipe(stroke_recipe) %>%
+  add_model(stroke_tree)
+```
+
+Here we tune the parameter 'cost_complexity' using the 10-fold cross validation subsets we formed earlier. We aim to tune over a grid of values of 'cost_complexity' and find the optimal value that maximizes ROC_AUC. By referring to the lecture, ROC_AUC refers to the area under the receiver operating characteristic curve, showing the trade-off between false positives and false negatives. We would like to maximize ROC_AUC, so the model is more accurate.
+```{r}
+set.seed(1)
+stroke_fit_tree <- tune_grid(
+  stroke_workflow_tree,
+  grid = data.frame(C = 2^(-12:-5)),
+  stroke_data_cv,
+  metrics = metric_set(roc_auc),
+)
+```
+
+A plot of ROC_AUC against the grid of values of 'cost_complexity' is presented here.
+```{r}
+stroke_fit_tree %>% autoplot()
+```
+
+We select the model with the most optimized value of 'cost_complexity' and obtain the overall model specification.
+```{r}
+stroke_tree_best <- stroke_fit_tree %>%
+  select_best(metric = "roc_auc")
+stroke_tree_final <- finalize_model(
+  stroke_tree,
+  stroke_tree_best)
+stroke_tree_final
+```
+
+Fitting our model on the test set gives the accuracy and ROC_AUC presented below. The result will be discussed together with results from other tree methods at a later stage.
+```{r}
+set.seed(1)
+stroke_tree_test <- 
+  stroke_workflow_tree %>%
+  update_model(stroke_tree_final) %>%
+  last_fit(split = stroke_data_split) %>%
+  collect_metrics()
+stroke_tree_test
+```
+
+This single classification tree is easily interpretable to a large extent. We can make use of the 'rpart.plot' library to get a visual representation of the decision tree. Here we cam observe the decision making path. This model is classifying all candidate with age above 68 and average glucose level above 135 as positive of getting stroke.
+```{r}
+stroke_workflow_tree_fitted <- stroke_workflow_tree %>%
+  update_model(stroke_tree_final) %>%
+  fit(stroke_data_train);
+tree_fit <- stroke_workflow_tree_fitted %>% 
+  pull_workflow_fit();
+rpart.plot(tree_fit$fit);
+```
+
+Second, we implement bagging method here. By referring to the lecture slides, we will implement "bootstrap aggregating, i.e. resampling training data and averaging resulting models.”
+
+Note that the original example given in lecture is done with engine 'C5.0'. However, cost_complexity is only supposed to be a tuning parameter for "'rpart' engine. 
+
+'Cost_complexity' is still the tuning parameter but 'tree-depth' is increased to 10 to allow developments of more complicated models.
+```{r}
+stroke_bag <- bag_tree(tree_depth = 10,
+                      cost_complexity = tune()) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+# constructing the workflow
+stroke_workflow_bag <- workflow() %>%
+  add_recipe(stroke_recipe) %>%
+  add_model(stroke_bag)
+```
+
+Here again, we tune the parameter 'cost_complexity' using the 10-fold cross validation subsets we formed earlier. We aim to tune over a grid of values of 'cost_complexity' and find the optimal value that maximizes ROC_AUC.
+```{r}
+set.seed(1)
+## this takes relatively long to run
+stroke_fit_bag <- tune_grid(
+  stroke_workflow_bag,
+  stroke_data_cv,
+  metrics = metric_set(roc_auc)
+)
+```
+
+A plot of ROC_AUC against the grid of values of 'cost_complexity' is presented here.
+```{r}
+stroke_fit_bag %>% autoplot()
+```
+
+We select the model with the most optimized value of 'cost_complexity' and obtain the overall model specification.
+```{r}
+stroke_bag_best <- stroke_fit_bag %>%
+  select_best()
+stroke_bag_final <- finalize_model(
+  stroke_bag,
+  stroke_bag_best)
+stroke_bag_final
+```
+
+Fitting our bagging model on the test set gives the accuracy and ROC_AUC presented below. The result will be discussed together with other results at a later stage.
+```{r}
+stroke_bag_test <- 
+  stroke_workflow_bag %>%
+  update_model(stroke_bag_final) %>%
+  last_fit(split = stroke_data_split) %>%
+  collect_metrics()
+stroke_bag_test
+```
+
+Third, we implement random forest here. By referring to the lecture slides, we will “randomly drop predictors when resampling" in order to get a better accuracy overall.
+
+Here we fix the 'trees' parameter, which is the total number of trees we grow to 100.'Mtry' is the tuning parameter here, by referring to the official document, it indicates the "number of predictors that will be randomly sampled at each split when creating the tree models."
+```{r}
+stroke_rf <-
+  rand_forest(trees = 100, mtry = tune()) %>%
+  set_mode("classification") %>%
+  set_engine("randomForest")
+#constructing the workflow
+stroke_workflow_rf <- workflow() %>%
+  add_recipe(stroke_recipe) %>%
+  add_model(stroke_rf)
+```
+
+By using the same method as before, we tune the parameter 'mtry' using the 10-fold cross validation subsets we formed earlier. We aim to tune over a grid of values of 'cost_complexity' and find the optimal value that maximizes ROC_AUC.
+```{r}
+set.seed(1)
+stroke_fit_rf <- tune_grid(
+  stroke_workflow_rf,
+  stroke_data_cv,
+  metrics = metric_set(roc_auc)
+)
+```
+
+A plot of ROC_AUC against the grid of values of 'mtry' is presented here.
+```{r}
+stroke_fit_rf %>% autoplot()
+```
+
+We select the model with the most optimized value of 'mtry' and obtain the overall model specification.
+```{r}
+stroke_rf_best <- stroke_fit_rf %>%
+  select_best(metric = "roc_auc")
+stroke_rf_final <- 
+  finalize_model(
+    stroke_rf,
+    stroke_rf_best
+  )
+stroke_rf_best
+```
+
+Fitting our random forest model on the test set gives the accuracy and ROC_AUC presented below.
+```{r}
+set.seed(1)
+stroke_rf_test <-
+  stroke_workflow_rf %>%
+  update_model(stroke_rf_final) %>%
+  last_fit(split = stroke_data_split) %>%
+  collect_metrics()
+stroke_rf_test
+```
+
+Now we collect together the accuracy and ROC_AUC obtained from 3 tree methods.
+```{r}
+tree_results <- data.frame(model=c('single_tree','bagging','random_forest'),
+                 accuracy=c(stroke_tree_test$.estimate[1],
+                            stroke_bag_test$.estimate[1],
+                            stroke_rf_test$.estimate[1]),
+                 ROC_AUC=c(stroke_tree_test$.estimate[2],
+                           stroke_bag_test$.estimate[2],
+                           stroke_rf_test$.estimate[2]))
+tree_results
+```
+
+As observed, it seems that all three methods obtain relatively high accuracy and fair ROC_AUC. However, it's important to recognize the fact that 95.76% observations in the test set actually have negative stroke outcome. This indicates the idea that, due to the fact that our original dataset is largely imbalanced and biased, no model here can be better than random guesses. 
+
+If we look into the prediction result, it's realized that our tree models are predicting negative for almost all of the observations. Although this gives statistically fair accuracy and ROC_AUC, in the context of medical examination, the models are rather useless since they fail to identify majority of the candidates that get stroke, hence they can't be use to identify other people who have the potential of getting stroke either.
+```{r}
+table(stroke_data_test$stroke)
+```
+
+Since our aim is to identify potential stroke from simple variables, i.e. these predicting variables can be obtained by an individual without undertaking any proper medical check, we would like to reduce the false-negatives as much as possible even if it leads to a rise in false-positives. In simple terms, we would rather ask more candidates to undertake proper medical checks than not identifying people with high potential of developing stroke. 
+
+One approach we can take is to adjust the threshold of identifying an observation as positive when predicting on the test set. We can calculate the percentage of positive outcomes in the training set, and use it as the adjusted threshold.
+```{r}
+train_table <- table(stroke_data_train$stroke)
+adj_threshold <- train_table[2] / (train_table[1] + train_table[2])
+```
+
+First, we implement the adjusted threshold for the single tree model and plot the confusion matrix.
+```{r}
+set.seed(1)
+a <- stroke_workflow_tree %>% #fit the tree on test set
+  update_model(stroke_tree_final) %>%
+  last_fit(split = stroke_data_split)
+tree_predict <- as.data.frame(a$.predictions) #get the original prediction
+tree_predict$pred_adj = tree_predict$.pred_1
+tree_predict <- tree_predict %>%
+   mutate(across(c("pred_adj",), ~ifelse(.>=adj_threshold, 1, 0))) #re-adjust threshold
+tree_predict_tibble <- tibble("actual" = tree_predict$stroke, "prediction" = tree_predict$pred_adj);
+tree_predict_table <- table(tree_predict_tibble)
+cfm_tree <- tidy(tree_predict_table) #construct the confusion matrix
+plot_confusion_matrix(cfm_tree, target_col = "actual", prediction_col = "prediction", counts_col = "n")
+```
+
+Second, we implement the adjusted threshold for the bagging model and plot the confusion matrix.
+```{r}
+set.seed(1)
+a <- stroke_workflow_bag %>% #fit the bagging model on test set
+  update_model(stroke_bag_final) %>%
+  last_fit(split = stroke_data_split)
+bag_predict <- as.data.frame(a$.predictions) #get the original prediction
+bag_predict$pred_adj = bag_predict$.pred_1
+bag_predict <- bag_predict %>%
+   mutate(across(c("pred_adj",), ~ifelse(.>=adj_threshold, 1, 0))) #re-adjust threshold
+bag_predict_tibble <- tibble("actual" = bag_predict$stroke, "prediction" = bag_predict$pred_adj);
+bag_predict_table <- table(bag_predict_tibble)
+cfm_bag <- tidy(bag_predict_table) #construct the confusion matrix
+plot_confusion_matrix(cfm_bag, target_col = "actual", prediction_col = "prediction", counts_col = "n")
+```
+
+Third, we implement the adjusted threshold for the random forest model and plot the confusion matrix.
+```{r}
+set.seed(1)
+a <- stroke_workflow_rf %>% #fit the random forest model on test set
+  update_model(stroke_rf_final) %>%
+  last_fit(split = stroke_data_split)
+rf_predict <- as.data.frame(a$.predictions) #get the original prediction
+rf_predict$pred_adj = rf_predict$.pred_1
+rf_predict <- rf_predict %>%
+   mutate(across(c("pred_adj",), ~ifelse(.>=adj_threshold, 1, 0))) #re-adjust threshold
+rf_predict_tibble <- tibble("actual" = rf_predict$stroke, "prediction" = rf_predict$pred_adj);
+rf_predict_table <- table(rf_predict_tibble)
+cfm_rf <- tidy(rf_predict_table) #construct the confusion matrix
+plot_confusion_matrix(cfm_rf, target_col = "actual", prediction_col = "prediction", counts_col = "n")
+```
+
+As observed, although adjusting the threshold decreases the accuracy of all three models, it also helps to reduce the false-negatives. The random forest model successfully reduce the false negative rate and still keeps it below the false positive rate. 
+
+So we have a significant increase in sensitivity while sacrificing our models' specificity. Such boost in sensitivity of our models help to identify most of the positives correctly.
+
+Hence, we shall conclude that tree methods are capable of extracting useful information and make meaningful interpretation on this dataset and can potentially be used to identify people with higher risk of getting stroke if we adjust the threshold. 
+
+Regarding real-life application, we should always use a model of relatively high sensitivity in context like this. Depending on the actual cost of having false positive, i.e. the cost for further medical checks, we can should use the model that reaches the most suitable balance between sensitivity and specificity.
+
+## Neural Network Model
+
+We make sure that all the categorical variables are of type factor.
+```{r}
+stroke_data_train$gender <- factor(stroke_data_train$gender)
+stroke_data_train$hypertension <- factor(stroke_data_train$hypertension)
+stroke_data_train$heart_disease <- factor(stroke_data_train$heart_disease)
+stroke_data_train$ever_married <- factor(stroke_data_train$ever_married)
+stroke_data_train$work_type <- factor(stroke_data_train$work_type)
+stroke_data_train$Residence_type <- factor(stroke_data_train$Residence_type)
+stroke_data_train$smoking_status <- factor(stroke_data_train$smoking_status)
+stroke_data_test$gender <- factor(stroke_data_test$gender)
+stroke_data_test$hypertension <- factor(stroke_data_test$hypertension)
+stroke_data_test$heart_disease <- factor(stroke_data_test$heart_disease)
+stroke_data_test$ever_married <- factor(stroke_data_test$ever_married)
+stroke_data_test$work_type <- factor(stroke_data_test$work_type)
+stroke_data_test$Residence_type <- factor(stroke_data_test$Residence_type)
+stroke_data_test$smoking_status <- factor(stroke_data_test$smoking_status)
+```
+
+########################################################################################3
+
+For the neural network to work it has to work with the categorical variables have to be in numerical form. Therefore, we replace these variables with dummy variables
+## probabily need to explain / show why not including "ever_married", "work_type", "residence_type", "smoking_status" is better (avoid over-fitting)
+```{r}
+stroke_data_train2 <- dummy_cols(stroke_data_train, select_columns = c("gender", "hypertension", "heart_disease", "smoking_status", "ever_married", "work_type", "Residence_type"), remove_first_dummy = TRUE, remove_selected_columns = TRUE)
+stroke_data_test2 <- dummy_cols(stroke_data_test, select_columns = c("gender", "hypertension", "heart_disease", "smoking_status", "ever_married", "work_type", "Residence_type"), remove_first_dummy = TRUE, remove_selected_columns = TRUE)
+```
+
+To understand what the functions above do it is helpful to look for example at the variable gender. In the original training dataset, an observation's gender was determined whether the gender column contain "Male" or "Female". Now, in this new training dataset, the gender of an observation is determined whether the column gender_Male contains a "1" meaning the gender is "Male" or a "0" meaning the gender is "Female.
+```{r}
+glimpse(stroke_data_train)
+glimpse(stroke_data_train2)
+```
+
+Divide data in features and outcome
+```{r}
+set.seed(1) 
+#First on training dataset
+#Shuffle training dataset
+rand <- sample(nrow(stroke_data_train2))
+stroke_data_train2 <- stroke_data_train2[rand,]
+x_train <- cbind(stroke_data_train2[,2:4], stroke_data_train2[,6:17])
+y_train <- stroke_data_train2[,5]
+#Second on testing dataset
+#Shuffle testing dataset
+rand <- sample(nrow(stroke_data_test2))
+stroke_data_test2 <- stroke_data_test2[rand,]
+x_test <- cbind(stroke_data_test2[,2:4], stroke_data_test2[,6:17])
+y_test <- stroke_data_test2[,5]
+```
+
+
+Make sure all the dummy variables are of type integer so the algorithm below can work properly.
+```{r}
+class(x_train$hypertension)
+x_train$hypertension <- as.integer(x_train$hypertension)
+class(x_train$hypertension)
+x_train$heart_disease <- as.integer(x_train$heart_disease)
+x_test$hypertension <- as.integer(x_test$hypertension)
+x_test$heart_disease <- as.integer(x_test$heart_disease)
+class(y_train)
+```
+Turn datasets from dataframe to matrix in order to feed into algorithm.
+```{r}
+x_train2 <- data.matrix(x_train)
+x_test2 <- data.matrix(x_test)
+y_train2 <- data.matrix(y_train)
+y_test2 <- data.matrix(y_test)
+```
+
+In order to run the Neural Network we will use the package 'keras'. The Keras R interface uses the TensorFlow backend engine by default. For more information about the package refer to: https://cran.r-project.org/web/packages/keras/vignettes/index.html
+
+The neural network works the following way:
+
+$$\text{Step 1: We input the matrix } X = [X_{1}, ..., X_{p}]^{T}$$ 
+$$ \text{p being the total number of parameters and each } X_{i}\text{ is one column of x_train2 or x_test2.}$$
+$$\text{Step 2: We then run a linear regression on X to produce } Z^{2} = \beta_{0}^{1} + X \beta^{1}$$
+$$\text{Note : } \beta^{k} = [\beta^{k}_{1}, ..., \beta^{k}_{M}]^{T} \text{ (M is the number of units in layer k)}$$
+
+$$\text{Step 3: These results are then introduced into an activation function } a^{2} = \sigma(Z^{2})$$
+$$\text{ In this neural network we use two different types of activation functions:}$$
+$$\text{ relu (Rectified Linear unit): }\sigma(Z^{k}) = \max\{0, Z^{k}\}$$
+$$\text{and sigmoid } g(Z^{k}) = \frac{1]{1 + e^{-Z^{k}} $$
+$$\text{The matrix } a^{2} \text{ is then passed into the next layer. We go back to step 2 using } a^{2} \text{ instead of X.} $$
+$$\text{This process is done repetitively until we reach the final layer which outputs } a^{L} \text{ or equivalently Y, the predicted outcome.} $$
+$$\text{In conclusion the neural network does this: } Y = g(\sigma(\sigma(\sigma(\beta_{0}^{1} + X \beta^{1})))) $$
+$$\text{The dropout layer is a method of regularization that randomly does not use a unit of the layer with probability 0.5.} $$
+
+```{r}
+#Load necessary package to design NN
+library(keras)
+#Input units
+p <- length(x_train2[1,]) #We are going to input all the features into the neural net. The algorithm will then create a 80 different variables using these features.
+#Output units
+y <- length(y_train2[1]) #The predicted stroke value
+NN_model <- keras_model_sequential() #We will stack the layers linearly
+NN_model %>%
+  layer_dense(units = 80, activation = 'relu', input_shape = c(p)) %>% 
+  layer_dropout(rate = 0.5) %>% #Dropout layer for regularization
+  layer_dense(units = 40, activation = 'relu') %>%
+  layer_dropout(rate = 0.5) %>% #Dropout layer for regularization
+  layer_dense(units = 20, activation = 'relu') %>%
+  layer_dropout(rate = 0.5) %>% #Dropout layer for regularization
+  layer_dense(units = y, activation = 'sigmoid')
+summary(NN_model)
+```
+As you can see the network has to find the optimum of 5521 parameters these are all the weight $$ \beta_{i}^{k}$$.
+
+We compile the model with appropriate loss function, optimizer, and metrics.
+The loss function used here is called binary cross-entropy also known as log loss. This is the same function used in the logistic model.
+The optimizer algorithm used is stochastic gradient descent. Stochastic gradient descent randomly picks one observation from the whole data set instead of using all the observations to calculate the derivatives. This reduces the running time of the algorithm.
+```{r}
+NN_model %>% compile(
+  loss = 'binary_crossentropy', #Loss function
+  optimizer = optimizer_sgd(), 
+  metrics = c('accuracy') #The objective of the algorithm is to achieve the best possible accuracy
+)
+```
+
+
+Train the model for 50 epochs using batches of 100
+```{r}
+set.seed(1)
+history <- NN_model %>% fit(
+  x_train2, y_train2, 
+  epochs = 50, batch_size = 100)
+plot(history)
+```
+
+The final result on our test set
+```{r}
+NN_model %>% evaluate(
+  x_test2, y_test2)
+```
+
+```
+Impute missing values in bmi using the function MICE. (https://www.analyticsvidhya.com/blog/2016/03/tutorial-powerful-packages-imputing-missing-values/#:~:text=impute()%20function%20simply%20imputes,bootstrapping%2C%20and%20predictive%20mean%20matching.)
+
+MICE assumes that the missing data are Missing at Random (MAR), which means that the probability that a value is missing depends only on observed value and can be predicted using them. It imputes data on a variable by variable basis by specifying an imputation model per variable.
+
+First we have to change bmi variables with "N/A" from "N/A" to nothing
+```{r}
+stroke_data1 <- stroke_data1 %>%
+   mutate(across(c("bmi",), ~ifelse(.=="N/A", NA, as.numeric(.))))
+
+glimpse(stroke_data1)
+```
+```{r}
+library(mice)
+
+#Check missing values
+md.pattern(stroke_data1)
+```
+As bmi values are continuous, the function mice uses linear regression, more specifically Predictive Mean Matching, to predict continuous missing values.
+Predictive mean matching
+```{r}
+imputed_Data <- mice(stroke_data1, m = 1, maxit = 50, method = 'pmm', seed = 500)
+
+#m  – Refers to 5 imputed data sets
+#maxit – Refers to no. of iterations taken to impute missing values
+#method – Refers to method used in imputation
+
+#get complete data ( 1st out of 1)
+stroke_data2 <- complete(imputed_Data,1)
+
+glimpse(stroke_data2)
+```
+
+Now lets try to do the same thing with the smoking_status.
+
+First we have to change smoking_status variables with "Unknown" from "Unknown" to nothing
+```{r}
+stroke_data2 <- stroke_data2 %>%
+   mutate(across(c("smoking_status",), ~ifelse(.== "Unknown", NA, as.character(.))))
+
+glimpse(stroke_data2)
+```
+Make sure smoking_status is a categorical variable
+```{r}
+class(stroke_data2$smoking_status)
+stroke_data2$smoking_status <- factor(stroke_data2$smoking_status)
+class(stroke_data2$smoking_status)
+
+#Check number of variables per category for later
+table(stroke_data2$smoking_status)
+```
+
+```{r}
+library(mice)
+
+#Check missing values
+md.pattern(stroke_data2)
+```
+As smoking_status values are categorical, logistic regression (Bayesian polytomous regression) is used to predict categorical missing values
+```{r}
+imputed_Data2 <- mice(stroke_data2, m = 1, maxit = 50, method = 'polyreg', seed = 500)
+
+#m  – Refers to 5 imputed data sets
+#maxit – Refers to no. of iterations taken to impute missing values
+#method – Refers to method used in imputation
+
+#get 1st out of 1 datasets
+stroke_data3 <- complete(imputed_Data2,1)
+
+glimpse(stroke_data3)
+table(stroke_data3$smoking_status)
+```
